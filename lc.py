@@ -1,6 +1,7 @@
 import csv
 import os
 import sys
+import json
 
 data = []
 good = []
@@ -45,11 +46,14 @@ def main(fn=None):
 					try:
 						line[k] = float(v)
 					except ValueError:
+						try:
+							json.dumps(v)
+						except UnicodeDecodeError:
+							line[k] = v.decode('latin-1')
 						continue
 					if has_percent:
 						line[k] /= 100.0
-				except:
-					continue
+
 
 			data.append(line)
 			if line.get('Status') in ('Late (31-120 days)', 'Default', 'Performing Payment Plan', 'Charged Off'):
