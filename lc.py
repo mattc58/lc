@@ -2,10 +2,24 @@ import csv
 import os
 import sys
 import json
+import random
 
 data = []
 good = []
 bad = []
+
+def make_training_sample(k=.1):
+	s = random.sample(data, int(k * len(data)))
+	for item in s:
+		if item['Status'] in ('Late (31-120 days)', 'Default', 'Performing Payment Plan', 'Charged Off'):
+			item['Status'] = 'BAD'
+		else:
+			item['Status'] = 'GOOD'
+
+	cols = sorted(s[0].keys())
+	cols.remove('Status')
+	cols.append('Status')
+	return [[item[col] for col in cols] for item in s]
 
 def main(fn=None):
 	global data, good, bad
