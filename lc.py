@@ -71,26 +71,85 @@ class LC(object):
 		'''
 		return (self.transform_data(random.sample(self.all, int(k * len(self.all)))))
 
+	def transform_row(self, row):
+		'''
+		Transform a given row into something that's ready for the decision tree
+		'''
+		# make the status good or bad, for our purposes
+		if row['Status'] in self.BAD_STATUS:
+			row['Status'] = 'BAD'
+		else:
+			row['Status'] = 'GOOD'
+		
+		# remove columns we don't need
+		for col in ('Loan ID', 'Application Date', 'Application Expiration Date', 'Issued Date', 
+			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
+			' Payments To Date','Screen Name', 'Code'):
+			if col in row:
+				del row[col]
+
+		# finally change some of financial figures to / 5000 to give us some more consistent bands
+		for col in ('Amount Requested','Amount Funded By Investors','Total Amount Funded'):
+			val = int(row[col]) / 5000
+
+		# finally turn into a list and put the Status column at the end
+		cols = sorted(row.keys())
+		cols.remove('Status')
+		cols.append('Status')
+		return [row[col] for col in cols]
+
+
 	def transform_data(self, data):
 		'''
 		Transform a given dataset into something ready for the decision tree
 		'''
-		for item in data:
-			if item['Status'] in self.BAD_STATUS:
-				item['Status'] = 'BAD'
-			else:
-				item['Status'] = 'GOOD'
-
-		cols = sorted(data[0].keys())
-		cols.remove('Status')
-		cols.append('Status')
-		return [[item[col] for col in cols] for item in data]
+		return [self.transform_row(row) for row in data]
 
 	def make_tree(self, data):
 		'''
 		Make a decision tree with the supplied data
 		'''
 		return treepredict.buildtree(data)
+
+	def test_tree(self, k=.2):
+		'''
+		Conduct a test of decision trees
+		'''
+		# first get a sample to use for training and make a tree from it
+		print "making sample and training tree..."
+		sample = self.make_training_sample(k=k)
+		tree = self.make_tree(sample)
+
+		# now go through the rest of all, seeing how it does
+		print "initializing for testing..."
+		num_skipped = num_false_positive = num_false_negative = num_right = 0
+		transform_all = self.transform_data(self.all)
+
+		print "testing..."
+		for item in transform_all:
+			# if it's the sample set, disregard
+			if item in sample:
+				num_skipped += 1
+				continue
+			status = item[-1]
+			guess = treepredict.classify(item[0:-1], tree)
+
+			# if we're right, record. if not, determine if false negative (ok) or false positive (bad)
+			if status in guess:
+				num_right += 1
+			else:
+				if status == 'GOOD':
+					num_false_negative += 1
+				else:
+					num_false_positive += 1
+
+		# display results
+		num_processed = len(transform_all) - num_skipped
+		print "sample size=%d, testing size=%d, num_skipped=%d" % (len(sample), num_processed, num_skipped)
+		print "%.2f correct" % ((float(num_right) / float(num_processed)) * 100.0)
+		print "%.2f false negatives (kinda ok)" % ((float(num_false_negative) / float(num_processed)) * 100.0)
+		print "%.2f false positives (bad)" % ((float(num_false_positive) / float(num_processed)) * 100.0)
+
 
 	def load_data(self, file_name):
 		'''
