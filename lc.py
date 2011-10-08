@@ -62,11 +62,11 @@ class LC(object):
 		Create some of the lists we'll use
 		'''
 		self.all = []
-		self.good = []
-		self.bad = []
 
 		if training_fn:
-			self.load_data(training_fn)
+			self.load_training_data(training_fn)
+		# if testing_fn:
+		# 	self.load_testing_data(testing_fn)
 
 	def make_training_sample(self, k=.1):
 		'''
@@ -78,18 +78,50 @@ class LC(object):
 		'''
 		Transform a given row into something that's ready for the decision tree
 		'''
-		# make the status good or bad, for our purposes
-		if row['Status'] in self.BAD_STATUS:
-			row['Status'] = 'BAD'
-		else:
-			row['Status'] = 'GOOD'
-		
 		# remove columns we don't need
 		for col in ('Loan ID', 'Application Date', 'Application Expiration Date', 'Issued Date', 
 			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
 			' Payments To Date','Screen Name', 'Code'):
 			if col in row:
 				del row[col]
+
+		# make the status good or bad, for our purposes
+		if row['Status'] in self.BAD_STATUS:
+			row['Status'] = 'BAD'
+		else:
+			row['Status'] = 'GOOD'
+		
+		row['Loan Length'] = row['Loan Length'].replace(' months', '')
+
+		# convert numeric values
+		for k, v in row.items():
+			try:
+				row[k] = int(v)
+			except ValueError:
+				if '%' in v:
+					v = v.replace('%', '')
+					has_percent = True
+				else:
+					has_percent = False
+				try:
+					row[k] = float(v)
+				except ValueError:
+					try:
+						json.dumps(v)
+					except UnicodeDecodeError:
+						row[k] = v.decode('latin-1')
+					continue
+				if has_percent:
+					row[k] /= 100.0
+
+		# handle employment
+		# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
+		e = row['Employment Length'].replace(' years', '')
+		e = e.replace(' year', '')
+		e = e.replace('n/a', '0')
+		e = e.replace('< 1', '0.5')
+		e = e.replace('10+', '10.0')
+		row['Employment Length'] = e
 
 		# finally change some of financial figures to / 2500 to give us some more consistent bands
 		for col in ('Amount Requested','Amount Funded By Investors','Total Amount Funded'):
@@ -157,7 +189,7 @@ class LC(object):
 		print "%.2f false positives (bad)" % ((float(num_false_positive) / float(num_processed)) * 100.0)
 
 
-	def load_data(self, file_name):
+	def load_training_data(self, file_name):
 		'''
 		Load the data from file_name and make the all, good, and bad lists
 		'''
@@ -169,49 +201,14 @@ class LC(object):
 				if not line.get('Status') or 'Does not meet the current credit policy' in line.get('Status'):
 					continue
 
-				# handle employment
-				# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
+				# we need employment length and term
 				if 'Employment Length' not in line:
 					continue
-				e = line['Employment Length'].replace(' years', '')
-				e = e.replace(' year', '')
-				e = e.replace('n/a', '0')
-				e = e.replace('< 1', '0.5')
-				e = e.replace('10+', '10.0')
-				line['Employment Length'] = e
-
 				# handle term
 				if 'Loan Length' not in line:
 					continue
-				line['Loan Length'] = line['Loan Length'].replace(' months', '')
-
-				# convert numeric values
-				for k, v in line.items():
-					try:
-						line[k] = int(v)
-					except ValueError:
-						if '%' in v:
-							v = v.replace('%', '')
-							has_percent = True
-						else:
-							has_percent = False
-						try:
-							line[k] = float(v)
-						except ValueError:
-							try:
-								json.dumps(v)
-							except UnicodeDecodeError:
-								line[k] = v.decode('latin-1')
-							continue
-						if has_percent:
-							line[k] /= 100.0
-
 
 				self.all.append(line)
-				if line.get('Status') in self.BAD_STATUS:
-					self.bad.append(line)
-				else:
-					self.good.append(line)
 	
 
 if __name__ == '__main__':
