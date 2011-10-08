@@ -62,11 +62,12 @@ class LC(object):
 		Create some of the lists we'll use
 		'''
 		self.all = []
+		self.testing = []
 
 		if training_fn:
 			self.load_training_data(training_fn)
-		# if testing_fn:
-		# 	self.load_testing_data(testing_fn)
+		if testing_fn:
+			self.load_testing_data(testing_fn)
 
 	def make_training_sample(self, k=.1):
 		'''
@@ -74,14 +75,14 @@ class LC(object):
 		'''
 		return (self.transform_data(random.sample(self.all, int(k * len(self.all)))))
 
-	def transform_row(self, row):
+	def transform_training_row(self, row):
 		'''
 		Transform a given row into something that's ready for the decision tree
 		'''
 		# remove columns we don't need
 		for col in ('Loan ID', 'Application Date', 'Application Expiration Date', 'Issued Date', 
 			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
-			' Payments To Date','Screen Name', 'Code'):
+			' Payments To Date','Screen Name', 'Code', 'Monthly Payment', 'Totaly Amount Funded', 'City', 'State'):
 			if col in row:
 				del row[col]
 
@@ -133,12 +134,71 @@ class LC(object):
 		cols.append('Status')
 		return [row[col] for col in cols]
 
+	def transform_testing_row(self, row):
+		'''
+		Transform a given row into something that's ready for the decision tree
+		'''
+		# remove columns we don't need
+		for col in ('Application Date', 'Application Expiration Date', 'Issued Date', 
+			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
+			' Payments To Date','Screen Name', 'Code', 'Monthly Payment', 'Totaly Amount Funded', 'City', 'State',
+			'APR', 'Amount Funded', 'Number of Lenders', 'Expiration Date', 'CREDIT Rating', 'Location'):
+			if col in row:
+				del row[col]
+
+		# make the status good or bad, for our purposes
+		if row['Status'] in self.BAD_STATUS:
+			row['Status'] = 'BAD'
+		else:
+			row['Status'] = 'GOOD'
+		
+		row['Loan Length'] = row['Loan Length'].replace(' months', '')
+
+		# convert numeric values
+		for k, v in row.items():
+			try:
+				row[k] = int(v)
+			except ValueError:
+				if '%' in v:
+					v = v.replace('%', '')
+					has_percent = True
+				else:
+					has_percent = False
+				try:
+					row[k] = float(v)
+				except ValueError:
+					try:
+						json.dumps(v)
+					except UnicodeDecodeError:
+						row[k] = v.decode('latin-1')
+					continue
+				if has_percent:
+					row[k] /= 100.0
+
+		# handle employment
+		# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
+		e = row['Employment Length'].replace(' years', '')
+		e = e.replace(' year', '')
+		e = e.replace('n/a', '0')
+		e = e.replace('< 1', '0.5')
+		e = e.replace('10+', '10.0')
+		row['Employment Length'] = e
+
+		# finally change some of financial figures to / 2500 to give us some more consistent bands
+		for col in ('Amount Requested', ):
+			row[col] = int(row[col]) / 2500
+
+		# finally turn into a list and put the Status column at the end
+		cols = sorted(row.keys())
+		cols.remove('Loan ID')
+		cols.append('Loan ID')
+		return [row[col] for col in cols]
 
 	def transform_data(self, data):
 		'''
 		Transform a given dataset into something ready for the decision tree
 		'''
-		return [self.transform_row(row) for row in data]
+		return [self.transform_training_row(row) for row in data]
 
 	def make_tree(self, data):
 		'''
@@ -188,10 +248,39 @@ class LC(object):
 		print "%.2f false negatives (kinda ok)" % ((float(num_false_negative) / float(num_processed)) * 100.0)
 		print "%.2f false positives (bad)" % ((float(num_false_positive) / float(num_processed)) * 100.0)
 
+	def run_tree(self, tree):
+		'''
+		Run the testing data against the tree
+		'''
+		# first get a sample to use for training and make a tree from it
+		print "transforming test data"
+		test_data = []
+		for item in self.testing:
+			test_data.append(self.transform_testing_row(item))
+
+		print "running..."
+		for item in test_data:
+			guess = treepredict.classify(item[0:-1], tree)
+			print "loan id=%s, results=%s" % (item[-1], guess)
+
 
 	def load_training_data(self, file_name):
 		'''
-		Load the data from file_name and make the all, good, and bad lists
+		Load the data from file_name and make the all list
+		'''
+		with open(file_name) as f:
+			print "loading from %s..." % file_name
+			dr = csv.DictReader(f)
+			for line in dr:
+				# skip lines that have the older credit policy
+				if not line.get('Status') or 'Does not meet the current credit policy' in line.get('Status'):
+					continue
+
+				self.all.append(line)
+	
+	def load_testing_data(self, file_name):
+		'''
+		Load the data from file_name and make the testing list
 		'''
 		with open(file_name) as f:
 			print "loading from %s..." % file_name
@@ -208,7 +297,7 @@ class LC(object):
 				if 'Loan Length' not in line:
 					continue
 
-				self.all.append(line)
+				self.testing.append(line)
 	
 
 if __name__ == '__main__':
