@@ -57,13 +57,16 @@ class LC(object):
 	BAD_STATUS = ('Late (31-120 days)', 'Default', 'Performing Payment Plan', 'Charged Off')
 
 
-	def __init__(self):
+	def __init__(self, training_fn=None, testing_fn=None):
 		'''
 		Create some of the lists we'll use
 		'''
 		self.all = []
 		self.good = []
 		self.bad = []
+
+		if training_fn:
+			self.load_data(training_fn)
 
 	def make_training_sample(self, k=.1):
 		'''
@@ -88,9 +91,9 @@ class LC(object):
 			if col in row:
 				del row[col]
 
-		# finally change some of financial figures to / 5000 to give us some more consistent bands
+		# finally change some of financial figures to / 2500 to give us some more consistent bands
 		for col in ('Amount Requested','Amount Funded By Investors','Total Amount Funded'):
-			val = int(row[col]) / 5000
+			row[col] = int(row[col]) / 2500
 
 		# finally turn into a list and put the Status column at the end
 		cols = sorted(row.keys())
@@ -117,20 +120,23 @@ class LC(object):
 		'''
 		# first get a sample to use for training and make a tree from it
 		print "making sample and training tree..."
-		sample = self.make_training_sample(k=k)
+		ids = random.sample(range(len(self.all)), int(k * len(self.all)))
+		sample = []
+		transform_all = []
+		for i, item in enumerate(self.all):
+			row = self.transform_row(item)
+			if i in ids:
+				sample.append(row)
+			else:
+				transform_all.append(row)
+
 		tree = self.make_tree(sample)
 
 		# now go through the rest of all, seeing how it does
-		print "initializing for testing..."
-		num_skipped = num_false_positive = num_false_negative = num_right = 0
-		transform_all = self.transform_data(self.all)
+		num_false_positive = num_false_negative = num_right = 0
 
 		print "testing..."
 		for item in transform_all:
-			# if it's the sample set, disregard
-			if item in sample:
-				num_skipped += 1
-				continue
 			status = item[-1]
 			guess = treepredict.classify(item[0:-1], tree)
 
@@ -144,8 +150,8 @@ class LC(object):
 					num_false_positive += 1
 
 		# display results
-		num_processed = len(transform_all) - num_skipped
-		print "sample size=%d, testing size=%d, num_skipped=%d" % (len(sample), num_processed, num_skipped)
+		num_processed = len(transform_all)
+		print "sample size=%d, testing size=%d" % (len(sample), num_processed)
 		print "%.2f correct" % ((float(num_right) / float(num_processed)) * 100.0)
 		print "%.2f false negatives (kinda ok)" % ((float(num_false_negative) / float(num_processed)) * 100.0)
 		print "%.2f false positives (bad)" % ((float(num_false_positive) / float(num_processed)) * 100.0)
@@ -156,6 +162,7 @@ class LC(object):
 		Load the data from file_name and make the all, good, and bad lists
 		'''
 		with open(file_name) as f:
+			print "loading from %s..." % file_name
 			dr = csv.DictReader(f)
 			for line in dr:
 				# skip lines that have the older credit policy
