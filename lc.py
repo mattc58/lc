@@ -57,12 +57,12 @@ class LC(object):
 	BAD_STATUS = ('Late (31-120 days)', 'Default', 'Performing Payment Plan', 'Charged Off')
 
 
-	def __init__(self, training_fn=None, testing_fn=None):
+	def __init__(self, training_fn='LoanStats.csv', testing_fn='InFundingStats.csv'):
 		'''
 		Create some of the lists we'll use
 		'''
-		self.all = []
-		self.testing = []
+		self.training_data = []
+		self.testing_data = []
 
 		if training_fn:
 			self.load_training_data(training_fn)
@@ -73,7 +73,7 @@ class LC(object):
 		'''
 		Make a sample of size k of the data. This is used in the decision tree.
 		'''
-		return (self.transform_data(random.sample(self.all, int(k * len(self.all)))))
+		return (self.transform_data(random.sample(self.training_data, int(k * len(self.training_data)))))
 
 	def transform_training_row(self, row):
 		'''
@@ -212,10 +212,10 @@ class LC(object):
 		'''
 		# first get a sample to use for training and make a tree from it
 		print "making sample and training tree..."
-		ids = random.sample(range(len(self.all)), int(k * len(self.all)))
+		ids = random.sample(range(len(self.training_data)), int(k * len(self.training_data)))
 		sample = []
 		transform_all = []
-		for i, item in enumerate(self.all):
+		for i, item in enumerate(self.training_data):
 			row = self.transform_row(item)
 			if i in ids:
 				sample.append(row)
@@ -264,6 +264,37 @@ class LC(object):
 			print "loan id=%s, results=%s" % (item[-1], guess)
 
 
+	def compare_data(self):
+		'''
+		Compare the training and test data
+		'''
+		print "training data keys=%s" % self.training_data[0].keys()
+		print "\n"
+		print "test data keys=%s" % self.testing_data[0].keys()
+		print "\n"
+
+		print "in training, missing from test:"
+		for col in self.training_data[0].keys():
+			if col not in self.testing_data[0].keys():
+				print col
+		print "\n"
+		print "in test, missing from training:"
+		for col in self.testing_data[0].keys():
+			if col not in self.training_data[0].keys():
+				print col
+
+	def normalize_data(self):
+		'''
+		Make the training and testing data normalized to each other such that we're
+		training on data that exactly meets what we have to test.
+		'''
+		# credit rating and credit grade
+		# calc monthly payment on testing based on amount requested
+		# training.city and state into testing.location
+		# remove any other columns from training we don't need (load id, dates, etc.)
+		pass
+
+
 	def load_training_data(self, file_name):
 		'''
 		Load the data from file_name and make the all list
@@ -276,7 +307,7 @@ class LC(object):
 				if not line.get('Status') or 'Does not meet the current credit policy' in line.get('Status'):
 					continue
 
-				self.all.append(line)
+				self.training_data.append(line)
 	
 	def load_testing_data(self, file_name):
 		'''
@@ -297,7 +328,7 @@ class LC(object):
 				if 'Loan Length' not in line:
 					continue
 
-				self.testing.append(line)
+				self.testing_data.append(line)
 	
 
 if __name__ == '__main__':
