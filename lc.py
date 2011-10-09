@@ -75,125 +75,6 @@ class LC(object):
 		'''
 		return (self.transform_data(random.sample(self.training_data, int(k * len(self.training_data)))))
 
-	def transform_training_row(self, row):
-		'''
-		Transform a given row into something that's ready for the decision tree
-		'''
-		# remove columns we don't need
-		for col in ('Loan ID', 'Application Date', 'Application Expiration Date', 'Issued Date', 
-			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
-			' Payments To Date','Screen Name', 'Code', 'Monthly Payment', 'Totaly Amount Funded', 'City', 'State'):
-			if col in row:
-				del row[col]
-
-		# make the status good or bad, for our purposes
-		if row['Status'] in self.BAD_STATUS:
-			row['Status'] = 'BAD'
-		else:
-			row['Status'] = 'GOOD'
-		
-		row['Loan Length'] = row['Loan Length'].replace(' months', '')
-
-		# convert numeric values
-		for k, v in row.items():
-			try:
-				row[k] = int(v)
-			except ValueError:
-				if '%' in v:
-					v = v.replace('%', '')
-					has_percent = True
-				else:
-					has_percent = False
-				try:
-					row[k] = float(v)
-				except ValueError:
-					try:
-						json.dumps(v)
-					except UnicodeDecodeError:
-						row[k] = v.decode('latin-1')
-					continue
-				if has_percent:
-					row[k] /= 100.0
-
-		# handle employment
-		# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
-		e = row['Employment Length'].replace(' years', '')
-		e = e.replace(' year', '')
-		e = e.replace('n/a', '0')
-		e = e.replace('< 1', '0.5')
-		e = e.replace('10+', '10.0')
-		row['Employment Length'] = e
-
-		# finally change some of financial figures to / 2500 to give us some more consistent bands
-		for col in ('Amount Requested','Amount Funded By Investors','Total Amount Funded'):
-			row[col] = int(row[col]) / 2500
-
-		# finally turn into a list and put the Status column at the end
-		cols = sorted(row.keys())
-		cols.remove('Status')
-		cols.append('Status')
-		return [row[col] for col in cols]
-
-	def transform_testing_row(self, row):
-		'''
-		Transform a given row into something that's ready for the decision tree
-		'''
-		# remove columns we don't need
-		for col in ('Application Date', 'Application Expiration Date', 'Issued Date', 
-			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
-			' Payments To Date','Screen Name', 'Code', 'Monthly Payment', 'Totaly Amount Funded', 'City', 'State',
-			'APR', 'Amount Funded', 'Number of Lenders', 'Expiration Date', 'CREDIT Rating', 'Location'):
-			if col in row:
-				del row[col]
-
-		# make the status good or bad, for our purposes
-		if row['Status'] in self.BAD_STATUS:
-			row['Status'] = 'BAD'
-		else:
-			row['Status'] = 'GOOD'
-		
-		row['Loan Length'] = row['Loan Length'].replace(' months', '')
-
-		# convert numeric values
-		for k, v in row.items():
-			try:
-				row[k] = int(v)
-			except ValueError:
-				if '%' in v:
-					v = v.replace('%', '')
-					has_percent = True
-				else:
-					has_percent = False
-				try:
-					row[k] = float(v)
-				except ValueError:
-					try:
-						json.dumps(v)
-					except UnicodeDecodeError:
-						row[k] = v.decode('latin-1')
-					continue
-				if has_percent:
-					row[k] /= 100.0
-
-		# handle employment
-		# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
-		e = row['Employment Length'].replace(' years', '')
-		e = e.replace(' year', '')
-		e = e.replace('n/a', '0')
-		e = e.replace('< 1', '0.5')
-		e = e.replace('10+', '10.0')
-		row['Employment Length'] = e
-
-		# finally change some of financial figures to / 2500 to give us some more consistent bands
-		for col in ('Amount Requested', ):
-			row[col] = int(row[col]) / 2500
-
-		# finally turn into a list and put the Status column at the end
-		cols = sorted(row.keys())
-		cols.remove('Loan ID')
-		cols.append('Loan ID')
-		return [row[col] for col in cols]
-
 	def transform_data(self, data):
 		'''
 		Transform a given dataset into something ready for the decision tree
@@ -283,16 +164,94 @@ class LC(object):
 			if col not in self.training_data[0].keys():
 				print col
 
-	def normalize_data(self):
+	def normalize_data(self, item):
 		'''
 		Make the training and testing data normalized to each other such that we're
 		training on data that exactly meets what we have to test.
 		'''
-		# credit rating and credit grade
+		row = {}
+		row.update(item)
+
+		# make the status good or bad, for our purposes
+		if 'Number of Lenders' not in row:
+			if row['Status'] in self.BAD_STATUS:
+				row['Status'] = 'BAD'
+			else:
+				row['Status'] = 'GOOD'
+		else:
+			row['Status'] = 'TEST'
+
 		# calc monthly payment on testing based on amount requested
-		# training.city and state into testing.location
-		# remove any other columns from training we don't need (load id, dates, etc.)
-		pass
+		for col in ('Application Date', 'Application Expiration Date', 'Issued Date', 
+			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
+			' Payments To Date','Screen Name', 'Code', 'Total Amount Funded', 'Number of Lenders', 'Expiration Date', 'APR', 'Amount Funded',
+			'Amount Funded By Investors', 'Loan Description', 'Loan Title'):
+			if col in row:
+				del row[col]
+
+		row['Loan Length'] = row['Loan Length'].replace(' months', '')
+
+		# rename / combine
+		if 'CREDIT Grade' in row:
+			val = row.pop('CREDIT Grade')
+			row['CREDIT Rating'] = val
+		if 'City' in row and 'State' in row:
+			location = '%s, %s' % (row.pop('City'), row.pop('State'))
+			row['Location'] = location
+		if 'Monthly PAYMENT' not in row:
+			# calc the monthly payment for the testing data
+			principal = float(row.get('Amount Requested', '0.0'))
+			months = int(row['Loan Length'])
+			rate = float(row['Interest Rate'].replace('%', '')) / 100.0
+			# interest = principal * annual rate * # years
+			interest = principal * rate * (months / 12.0)
+			# mp = principal + interest / # months
+			row['Monthly PAYMENT'] = round(((principal + interest) / float(months)), 2)
+
+		# convert numeric values
+		for k, v in row.items():
+			try:
+				row[k] = int(v)
+			except ValueError:
+				if '%' in v:
+					v = v.replace('%', '')
+					has_percent = True
+				else:
+					has_percent = False
+				try:
+					row[k] = float(v)
+				except ValueError:
+					try:
+						json.dumps(v)
+					except UnicodeDecodeError:
+						row[k] = v.decode('latin-1')
+					continue
+				if has_percent:
+					row[k] /= 100.0
+
+		# handle employment
+		# set(['5 years', '4 years', '10+ years', 'n/a', '6 years', '9 years', '8 years', '3 years', '2 years', '< 1 year', '1 year', '7 years'])
+		e = row['Employment Length'].replace(' years', '')
+		e = e.replace(' year', '')
+		e = e.replace('n/a', '0')
+		e = e.replace('< 1', '0.5')
+		e = e.replace('10+', '10.0')
+		row['Employment Length'] = e
+
+		# finally change some of financial figures to / 2500 to give us some more consistent bands
+		for col in ('Amount Requested','Amount Funded By Investors','Total Amount Funded'):
+			if col in row:
+				row[col] = int(row[col]) / 2500
+
+		# finally turn into a list and put the Loan ID at the front and Status at the end
+		cols = sorted(row.keys())
+		cols.remove('Loan ID')
+		cols.insert(0, 'Loan ID')
+		if 'Status' in cols:
+			cols.remove('Status')
+			cols.append('Status')
+		print cols
+		return [row[col] for col in cols]
 
 
 	def load_training_data(self, file_name):
