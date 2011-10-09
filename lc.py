@@ -47,6 +47,7 @@ import os
 import sys
 import json
 import random
+import datetime
 import treepredict
 
 class LC(object):
@@ -79,7 +80,7 @@ class LC(object):
 		'''
 		Transform a given dataset into something ready for the decision tree
 		'''
-		return [self.transform_training_row(row) for row in data]
+		return [self.normalize_data(row) for row in data]
 
 	def make_tree(self, data):
 		'''
@@ -97,7 +98,7 @@ class LC(object):
 		sample = []
 		transform_all = []
 		for i, item in enumerate(self.training_data):
-			row = self.transform_row(item)
+			row = self.normalize_data(item)
 			if i in ids:
 				sample.append(row)
 			else:
@@ -111,7 +112,7 @@ class LC(object):
 		print "testing..."
 		for item in transform_all:
 			status = item[-1]
-			guess = treepredict.classify(item[0:-1], tree)
+			guess = treepredict.classify(item[1:-1], tree)
 
 			# if we're right, record. if not, determine if false negative (ok) or false positive (bad)
 			if status in guess:
@@ -136,8 +137,8 @@ class LC(object):
 		# first get a sample to use for training and make a tree from it
 		print "transforming test data"
 		test_data = []
-		for item in self.testing:
-			test_data.append(self.transform_testing_row(item))
+		for item in self.testing_data:
+			test_data.append(self.normalize_data(item))
 
 		print "running..."
 		for item in test_data:
@@ -185,7 +186,7 @@ class LC(object):
 		for col in ('Application Date', 'Application Expiration Date', 'Issued Date', 
 			'Remaining Principal Funded by Investors','Payments To Date (Funded by investors)','Remaining Principal ', 
 			' Payments To Date','Screen Name', 'Code', 'Total Amount Funded', 'Number of Lenders', 'Expiration Date', 'APR', 'Amount Funded',
-			'Amount Funded By Investors', 'Loan Description', 'Loan Title'):
+			'Amount Funded By Investors', 'Loan Description', 'Loan Title', 'City', 'State', 'Location', 'Education'):
 			if col in row:
 				del row[col]
 
@@ -195,9 +196,9 @@ class LC(object):
 		if 'CREDIT Grade' in row:
 			val = row.pop('CREDIT Grade')
 			row['CREDIT Rating'] = val
-		if 'City' in row and 'State' in row:
-			location = '%s, %s' % (row.pop('City'), row.pop('State'))
-			row['Location'] = location
+		# if 'City' in row and 'State' in row:
+		# 	location = '%s, %s' % (row.pop('City'), row.pop('State'))
+			# row['Location'] = location
 		if 'Monthly PAYMENT' not in row:
 			# calc the monthly payment for the testing data
 			principal = float(row.get('Amount Requested', '0.0'))
@@ -207,6 +208,9 @@ class LC(object):
 			interest = principal * rate * (months / 12.0)
 			# mp = principal + interest / # months
 			row['Monthly PAYMENT'] = round(((principal + interest) / float(months)), 2)
+		ecl = datetime.datetime.strptime(row.pop('Earliest CREDIT Line'), '%Y-%m-%d')
+		row['Credit Line Age'] = ((datetime.datetime.now() - ecl).days) / 365
+
 
 		# convert numeric values
 		for k, v in row.items():
@@ -250,7 +254,6 @@ class LC(object):
 		if 'Status' in cols:
 			cols.remove('Status')
 			cols.append('Status')
-		print cols
 		return [row[col] for col in cols]
 
 
